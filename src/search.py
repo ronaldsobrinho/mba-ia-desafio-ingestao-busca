@@ -1,3 +1,16 @@
+import os
+from dotenv import load_dotenv
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_postgres import PGVector
+
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+COLLECTION_NAME = os.getenv("PG_VECTOR_COLLECTION_NAME")
+EMBEDDING_MODEL = os.getenv("GOOGLE_EMBEDDING_MODEL")
+
+TOP_K = 10
+
 PROMPT_TEMPLATE = """
 CONTEXTO:
 {contexto}
@@ -25,5 +38,41 @@ PERGUNTA DO USUÁRIO:
 RESPONDA A "PERGUNTA DO USUÁRIO"
 """
 
+
+def get_store():
+    embeddings = GoogleGenerativeAIEmbeddings(model=EMBEDDING_MODEL)
+    return PGVector(
+        embeddings=embeddings,
+        collection_name=COLLECTION_NAME,
+        connection=DATABASE_URL,
+        use_jsonb=True,
+    )
+
+
+def search_context(question, store=None):
+    store = store or get_store()
+    return store.similarity_search_with_score(question, k=TOP_K)
+
+
+def build_context(results):
+    return "\n\n---\n\n".join(doc.page_content for doc, _ in results)
+
+
 def search_prompt(question=None):
     pass
+
+
+if __name__ == "__main__":
+    questions = [
+        ("Qual o faturamento da empresa SuperTechIABrazil?", "SuperTechIABrazil"),
+        ("Em que ano foi fundada a Alfa Energia S.A.?", "Alfa Energia S.A."),
+        ("Qual o faturamento da Aurora Educação EPP?", "Aurora Educação EPP"),
+        ("Qual é a capital da França?", None),
+    ]
+    store = get_store()
+    for question, expected in questions:
+        print(f"\n=== {question}")
+        for doc, score in search_context(question, store):
+            hit = "✓" if expected and expected in doc.page_content else " "
+            snippet = doc.page_content[:80].replace("\n", " ")
+            print(f"{hit} {score:.4f} | p.{doc.metadata.get('page')} | {snippet}")
