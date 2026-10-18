@@ -1,6 +1,9 @@
 import os
 from dotenv import load_dotenv
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnableLambda, RunnablePassthrough
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_postgres import PGVector
 
 load_dotenv()
@@ -8,6 +11,15 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 COLLECTION_NAME = os.getenv("PG_VECTOR_COLLECTION_NAME")
 EMBEDDING_MODEL = os.getenv("GOOGLE_EMBEDDING_MODEL")
+LLM_MODEL = os.getenv("GOOGLE_LLM_MODEL")
+
+REQUIRED_ENV = [
+    "GOOGLE_API_KEY",
+    "DATABASE_URL",
+    "PG_VECTOR_COLLECTION_NAME",
+    "GOOGLE_EMBEDDING_MODEL",
+    "GOOGLE_LLM_MODEL",
+]
 
 TOP_K = 10
 
@@ -59,7 +71,27 @@ def build_context(results):
 
 
 def search_prompt(question=None):
-    pass
+    missing = [name for name in REQUIRED_ENV if not os.getenv(name)]
+    if missing:
+        print(f"Variáveis ausentes no .env: {', '.join(missing)}")
+        return None
+
+    try:
+        store = get_store()
+        llm = ChatGoogleGenerativeAI(model=LLM_MODEL, temperature=0)
+    except Exception as e:
+        print(f"Erro ao inicializar a busca: {e}")
+        return None
+
+    prompt = PromptTemplate.from_template(PROMPT_TEMPLATE)
+    retrieve = RunnableLambda(lambda q: build_context(search_context(q, store)))
+    chain = (
+        {"contexto": retrieve, "pergunta": RunnablePassthrough()}
+        | prompt
+        | llm
+        | StrOutputParser()
+    )
+    return chain.invoke(question) if question else chain
 
 
 if __name__ == "__main__":
