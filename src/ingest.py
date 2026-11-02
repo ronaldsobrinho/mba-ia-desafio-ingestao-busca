@@ -3,18 +3,17 @@ import time
 from dotenv import load_dotenv
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_postgres import PGVector
+from embeddings import get_embeddings
 
 load_dotenv()
 
 PDF_PATH = os.getenv("PDF_PATH")
 DATABASE_URL = os.getenv("DATABASE_URL")
 COLLECTION_NAME = os.getenv("PG_VECTOR_COLLECTION_NAME")
-EMBEDDING_MODEL = os.getenv("GOOGLE_EMBEDDING_MODEL")
 
-BATCH_SIZE = 20
-PAUSE_SECONDS = 60
+BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "20"))
+PAUSE_SECONDS = int(os.getenv("EMBEDDING_BATCH_PAUSE_SECONDS", "60"))
 
 
 def ingest_pdf():
@@ -23,9 +22,8 @@ def ingest_pdf():
         chunk_size=1000, chunk_overlap=150
     ).split_documents(docs)
 
-    embeddings = GoogleGenerativeAIEmbeddings(model=EMBEDDING_MODEL)
     store = PGVector(
-        embeddings=embeddings,
+        embeddings=get_embeddings(),
         collection_name=COLLECTION_NAME,
         connection=DATABASE_URL,
         use_jsonb=True,

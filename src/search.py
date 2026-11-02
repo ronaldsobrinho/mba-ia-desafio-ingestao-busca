@@ -3,14 +3,14 @@ from dotenv import load_dotenv
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnableLambda, RunnablePassthrough
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_postgres import PGVector
+from embeddings import get_embeddings
 
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 COLLECTION_NAME = os.getenv("PG_VECTOR_COLLECTION_NAME")
-EMBEDDING_MODEL = os.getenv("GOOGLE_EMBEDDING_MODEL")
 LLM_MODEL = os.getenv("GOOGLE_LLM_MODEL")
 
 REQUIRED_ENV = [
@@ -33,6 +33,7 @@ REGRAS:
   "Não tenho informações necessárias para responder sua pergunta."
 - Nunca invente ou use conhecimento externo.
 - Nunca produza opiniões ou interpretações além do que está escrito.
+- Nunca faça cálculos, somas ou comparações: responda apenas valores escritos no CONTEXTO.
 
 EXEMPLOS DE PERGUNTAS FORA DO CONTEXTO:
 Pergunta: "Qual é a capital da França?"
@@ -52,9 +53,8 @@ RESPONDA A "PERGUNTA DO USUÁRIO"
 
 
 def get_store():
-    embeddings = GoogleGenerativeAIEmbeddings(model=EMBEDDING_MODEL)
     return PGVector(
-        embeddings=embeddings,
+        embeddings=get_embeddings(),
         collection_name=COLLECTION_NAME,
         connection=DATABASE_URL,
         use_jsonb=True,
@@ -92,19 +92,3 @@ def search_prompt(question=None):
         | StrOutputParser()
     )
     return chain.invoke(question) if question else chain
-
-
-if __name__ == "__main__":
-    questions = [
-        ("Qual o faturamento da empresa SuperTechIABrazil?", "SuperTechIABrazil"),
-        ("Em que ano foi fundada a Alfa Energia S.A.?", "Alfa Energia S.A."),
-        ("Qual o faturamento da Aurora Educação EPP?", "Aurora Educação EPP"),
-        ("Qual é a capital da França?", None),
-    ]
-    store = get_store()
-    for question, expected in questions:
-        print(f"\n=== {question}")
-        for doc, score in search_context(question, store):
-            hit = "✓" if expected and expected in doc.page_content else " "
-            snippet = doc.page_content[:80].replace("\n", " ")
-            print(f"{hit} {score:.4f} | p.{doc.metadata.get('page')} | {snippet}")
